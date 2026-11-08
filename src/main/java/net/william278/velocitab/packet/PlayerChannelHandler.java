@@ -52,6 +52,12 @@ public class PlayerChannelHandler extends ChannelDuplexHandler {
                 return;
             }
 
+            // Servers excluded from Velocitab (in no group) manage their own teams
+            if (!isFutureTabPlayer()) {
+                super.write(ctx, msg, promise);
+                return;
+            }
+
             if (updateTeamsPacket.isRemoveTeam()) {
                 super.write(ctx, msg, promise);
                 return;
