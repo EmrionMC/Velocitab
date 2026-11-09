@@ -22,6 +22,7 @@ package net.william278.velocitab.packet;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.ServerInfo;
+import com.velocitypowered.proxy.protocol.packet.RemovePlayerInfoPacket;
 import com.velocitypowered.proxy.protocol.packet.UpsertPlayerInfoPacket;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -35,6 +36,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 
 @RequiredArgsConstructor
@@ -86,6 +88,16 @@ public class PlayerChannelHandler extends ChannelDuplexHandler {
                     updateTeamsPacket.teamName(), player.getUsername());
             return;
         }
+        if (msg instanceof final RemovePlayerInfoPacket removePacket && isFutureTabPlayer()) {
+            // Backends remove hidden (vanished) or switching players; Velocitab lists them anyway, so keep them on the client
+            final List<UUID> kept = removePacket.getProfilesToRemove().stream().filter(uuid -> !isListedByVelocitab(uuid)).toList();
+            if (kept.isEmpty()) {
+                return;
+            }
+            removePacket.setProfilesToRemove(kept);
+            super.write(ctx, msg, promise);
+            return;
+        }
         if (!(msg instanceof final UpsertPlayerInfoPacket minecraftPacket)) {
             super.write(ctx, msg, promise);
             return;
@@ -130,6 +142,17 @@ public class PlayerChannelHandler extends ChannelDuplexHandler {
         entries.stream()
                 .filter(entry -> entry.getProfileId() != null && entry.getGameMode() == 3 && !entry.getProfileId().equals(player.getUniqueId()))
                 .forEach(entry -> entry.setGameMode(0));
+    }
+
+    /** another loaded player in the viewer's group: Velocitab shows them, so a removal from the backend would only make them flicker */
+    private boolean isListedByVelocitab(@NotNull UUID uuid) {
+        if (uuid.equals(player.getUniqueId())) {
+            return false;
+        }
+        final Optional<TabPlayer> target = plugin.getTabList().getTabPlayer(uuid);
+        final Optional<TabPlayer> viewer = plugin.getTabList().getTabPlayer(player);
+        return target.isPresent() && viewer.isPresent() && target.get().isLoaded() && target.get().getPlayer().isActive()
+                && target.get().getGroup().equals(viewer.get().getGroup());
     }
 
     private boolean isFutureTabPlayer() {
