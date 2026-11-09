@@ -24,6 +24,7 @@ import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.ServerInfo;
 import com.velocitypowered.proxy.protocol.packet.RemovePlayerInfoPacket;
 import com.velocitypowered.proxy.protocol.packet.UpsertPlayerInfoPacket;
+import com.velocitypowered.proxy.protocol.packet.chat.ComponentHolder;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
@@ -119,6 +120,15 @@ public class PlayerChannelHandler extends ChannelDuplexHandler {
                 minecraftPacket.getEntries().stream()
                         .filter(entry -> entry.getProfile() != null && !entry.getProfile().getId().equals(entry.getProfileId()))
                         .forEach(entry -> entry.setListed(false));
+            }
+
+            // A backend showing a player again (unvanish) sends no display name; keep Velocitab's instead of a white flash
+            if (minecraftPacket.containsAction(UpsertPlayerInfoPacket.Action.UPDATE_DISPLAY_NAME)) {
+                minecraftPacket.getEntries().stream()
+                        .filter(entry -> entry.getDisplayName() == null && isListedByVelocitab(entry.getProfileId()))
+                        .forEach(entry -> plugin.getTabList().getTabPlayer(entry.getProfileId())
+                                .flatMap(target -> target.getRelationalDisplayName(player.getUniqueId()))
+                                .ifPresent(name -> entry.setDisplayName(new ComponentHolder(player.getProtocolVersion(), name))));
             }
 
             if (!minecraftPacket.containsAction(UpsertPlayerInfoPacket.Action.ADD_PLAYER) && !minecraftPacket.containsAction(UpsertPlayerInfoPacket.Action.UPDATE_LISTED)) {
